@@ -2,8 +2,12 @@
 require 'config/db.php';
 require 'includes/auth.php';
 require_login();
+require 'includes/ia_engine.php';
 
 $page_titre = 'Dashboard';
+
+// --- Exécution des automatisations IA (Background check) ---
+verifierPrevisionsIA($pdo);
 
 // --- Statistiques principales ---
 $totalMedicaments = $pdo->query("SELECT COUNT(*) n FROM medicaments WHERE actif = 1")->fetch()['n'];
