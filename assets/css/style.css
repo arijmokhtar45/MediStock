@@ -1,0 +1,61 @@
+:root {
+    --ms-primary: #0d6efd;
+    --ms-dark: #0a3d62;
+}
+
+body {
+    background-color: #f4f6f9;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.app-navbar {
+    background: linear-gradient(90deg, var(--ms-dark), var(--ms-primary));
+}
+
+.login-page {
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--ms-dark), var(--ms-primary));
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    border: none;
+    border-radius: 16px;
+}
+
+.login-logo {
+    font-size: 42px;
+}
+
+.stat-card {
+    border: none;
+    border-radius: 14px;
+    color: #fff;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.08);
+}
+
+.stat-card .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.stat-card.bg-medicaments { background: linear-gradient(135deg, #4e73df, #224abe); }
+.stat-card.bg-faible      { background: linear-gradient(135deg, #f6c23e, #dda20a); }
+.stat-card.bg-expiration  { background: linear-gradient(135deg, #e74a3b, #b02a37); }
+.stat-card.bg-ventes      { background: linear-gradient(135deg, #1cc88a, #13855c); }
+
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+
+.table thead {
+    background-color: #eef2f9;
+}
+
+.badge-expire-proche { background-color: #f6c23e; color: #222; }
+.badge-expire        { background-color: #e74a3b; }
+.badge-ok             { background-color: #1cc88a; }
