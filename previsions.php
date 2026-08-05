@@ -2,79 +2,15 @@
 require 'config/db.php';
 require 'includes/auth.php';
 require_login();
+require 'includes/ia_engine.php';
 
 $page_titre = 'Prévisions IA';
-
-/*
- * MODULE DE PREVISION DE STOCK — RÉGRESSION LINÉAIRE
- * ---------------------------------------------------------------------
- * Principe :
- *  1. On agrège les ventes de chaque médicament par mois (les N derniers mois).
- *  2. On applique une régression linéaire (méthode des moindres carrés) sur
- *     la série (index du mois -> quantité vendue) pour dégager la TENDANCE
- *     (hausse, baisse, stable).
- *  3. On extrapole cette droite pour prévoir la demande du mois prochain.
- *  4. On en déduit une consommation journalière moyenne prévue, puis une
- *     estimation du nombre de jours avant rupture de stock.
- *  5. On calcule le coefficient de détermination R² comme indicateur de
- *     fiabilité de la régression (à quel point la droite colle aux points réels).
- *  6. On propose une quantité de commande = prévision du mois + stock de
- *     sécurité − stock actuel.
- *
- * Si l'historique est trop court (moins de 2 mois avec des ventes), la
- * régression n'est pas fiable : on retombe sur une simple moyenne des
- * ventes disponibles, et la fiabilité est signalée comme non calculable.
- *
- * 100% local : pas d'API externe, pas de Python — juste des maths simples
- * en PHP, appliquées à des données réelles de la base MySQL.
- */
 
 const NB_MOIS_HISTORIQUE   = 6;   // nombre de mois analysés
 const DELAI_LIVRAISON_JOURS = 7;  // délai moyen fournisseur
 const STOCK_SECURITE_JOURS  = 3;  // marge de sécurité
 const JOURS_PAR_MOIS        = 30; // approximation pour convertir mois -> jours
 const SEUIL_ALERTE_IA_JOURS = 30; // en dessous de ce seuil, le module IA crée une alerte "rupture prévue"
-
-/**
- * Régression linéaire simple (moindres carrés) sur une série de points (x, y).
- * Retourne la pente (a), l'ordonnée à l'origine (b) et le R² (fiabilité).
- */
-function regression_lineaire(array $x, array $y): array {
-    $n = count($x);
-    if ($n < 2) {
-        return ['pente' => 0, 'origine' => $y[0] ?? 0, 'r2' => null];
-    }
-
-    $sommeX  = array_sum($x);
-    $sommeY  = array_sum($y);
-    $sommeXY = 0;
-    $sommeX2 = 0;
-    for ($i = 0; $i < $n; $i++) {
-        $sommeXY += $x[$i] * $y[$i];
-        $sommeX2 += $x[$i] * $x[$i];
-    }
-
-    $denominateur = ($n * $sommeX2 - $sommeX * $sommeX);
-    if ($denominateur == 0) {
-        return ['pente' => 0, 'origine' => $sommeY / $n, 'r2' => null];
-    }
-
-    $pente   = ($n * $sommeXY - $sommeX * $sommeY) / $denominateur;
-    $origine = ($sommeY - $pente * $sommeX) / $n;
-
-    // Calcul du R² (coefficient de détermination)
-    $moyenneY = $sommeY / $n;
-    $ssTot = 0;
-    $ssRes = 0;
-    for ($i = 0; $i < $n; $i++) {
-        $prediction = $pente * $x[$i] + $origine;
-        $ssTot += ($y[$i] - $moyenneY) ** 2;
-        $ssRes += ($y[$i] - $prediction) ** 2;
-    }
-    $r2 = $ssTot > 0 ? max(0, 1 - ($ssRes / $ssTot)) : null;
-
-    return ['pente' => $pente, 'origine' => $origine, 'r2' => $r2];
-}
 
 // --- 1. Récupération des médicaments et de leur stock actuel ---
 $medicaments = $pdo->query("

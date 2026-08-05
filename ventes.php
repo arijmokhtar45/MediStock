@@ -225,8 +225,24 @@ function ajouterAuPanier(medicament) {
 function modifierQuantite(id, delta) {
     const item = panier.find(p => p.id === id);
     if (!item) return;
-    item.quantite = parseInt(item.quantite, 10) + delta;
-    if (item.quantite <= 0) panier = panier.filter(p => p.id !== id);
+    const nouvelleQté = parseInt(item.quantite, 10) + delta;
+    if (nouvelleQté <= 0) {
+        panier = panier.filter(p => p.id !== id);
+    } else {
+        item.quantite = nouvelleQté;
+    }
+    afficherPanier();
+}
+
+function saisirQuantite(id, valeur) {
+    const item = panier.find(p => p.id === id);
+    if (!item) return;
+    const qte = parseInt(valeur, 10);
+    if (isNaN(qte) || qte <= 0) {
+        item.quantite = 1;
+    } else {
+        item.quantite = qte;
+    }
     afficherPanier();
 }
 
@@ -236,9 +252,12 @@ function afficherPanier() {
         <tr>
             <td>${p.nom}</td>
             <td>
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="modifierQuantite(${p.id},-1)">-</button>
-                ${p.quantite}
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="modifierQuantite(${p.id},1)">+</button>
+                <div class="input-group input-group-sm" style="width: 120px;">
+                    <button type="button" class="btn btn-outline-secondary" onclick="modifierQuantite(${p.id},-1)">-</button>
+                    <input type="number" class="form-control text-center" value="${p.quantite}" 
+                           onchange="saisirQuantite(${p.id}, this.value)" min="1">
+                    <button type="button" class="btn btn-outline-secondary" onclick="modifierQuantite(${p.id},1)">+</button>
+                </div>
             </td>
             <td>${(p.prix * p.quantite).toFixed(3)} DT</td>
             <td><button type="button" class="btn btn-sm btn-link text-danger" onclick="modifierQuantite(${p.id}, -${p.quantite})">✕</button></td>

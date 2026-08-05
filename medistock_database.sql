@@ -234,12 +234,14 @@ BEGIN
 END //
 DELIMITER ;
 
+SET GLOBAL event_scheduler = ON;
+
 -- =====================================================================
--- TRIGGER : après mise à jour d'un lot, vérifier le stock faible
+-- TRIGGER : après INSERTION d'un lot (Vérif stock faible + Expiration + Mouvement)
 -- =====================================================================
 DELIMITER //
-CREATE TRIGGER trg_verifier_stock_faible
-AFTER UPDATE ON lots
+CREATE TRIGGER trg_lots_after_insert
+AFTER INSERT ON lots
 FOR EACH ROW
 BEGIN
     DECLARE v_total INT;
@@ -247,8 +249,21 @@ BEGIN
     DECLARE v_nom VARCHAR(150);
     DECLARE v_deja_alerte INT;
 
+    -- Mouvement de stock automatique pour l'entrée
+    INSERT INTO mouvements_stock (medicament_id, lot_id, type_mouvement, quantite, motif, utilisateur_id)
+    VALUES (NEW.medicament_id, NEW.id, 'entree', NEW.quantite_initiale, CONCAT('Réception lot ', NEW.numero_lot), 1);
+
+    -- Vérification expiration proche
+    IF DATEDIFF(NEW.date_expiration, CURDATE()) BETWEEN 0 AND 30 THEN
+        SELECT nom INTO v_nom FROM medicaments WHERE id = NEW.medicament_id;
+        INSERT INTO alertes (type_alerte, medicament_id, lot_id, message)
+        VALUES ('expiration_proche', NEW.medicament_id, NEW.id,
+                CONCAT('Le lot ', NEW.numero_lot, ' de "', v_nom, '" expire le ', NEW.date_expiration));
+    END IF;
+
+    -- Vérification stock faible
     SELECT COALESCE(SUM(quantite),0) INTO v_total
-    FROM lots WHERE medicament_id = NEW.medicament_id AND statut = 'actif';
+    FROM lots WHERE medicament_id = NEW.medicament_id AND statut = 'actif' AND date_expiration >= CURDATE();
 
     SELECT quantite_minimale, nom INTO v_min, v_nom
     FROM medicaments WHERE id = NEW.medicament_id;
@@ -263,35 +278,84 @@ BEGIN
             VALUES ('stock_faible', NEW.medicament_id,
                     CONCAT('Stock faible : veuillez réapprovisionner "', v_nom, '" (reste ', v_total, ')'));
         END IF;
+    ELSE
+        UPDATE alertes SET statut = 'traitee', date_traitement = NOW()
+        WHERE medicament_id = NEW.medicament_id AND type_alerte = 'stock_faible' AND statut = 'active';
     END IF;
 END //
 DELIMITER ;
 
 -- =====================================================================
--- TRIGGER : après insertion d'un lot, vérifier si expiration proche (<=30j)
+-- TRIGGER : après MISE À JOUR d'un lot (ex: après une vente)
 -- =====================================================================
 DELIMITER //
-CREATE TRIGGER trg_verifier_expiration_lot
-AFTER INSERT ON lots
+CREATE TRIGGER trg_lots_after_update
+AFTER UPDATE ON lots
 FOR EACH ROW
 BEGIN
+    DECLARE v_total INT;
+    DECLARE v_min INT;
     DECLARE v_nom VARCHAR(150);
-    IF DATEDIFF(NEW.date_expiration, CURDATE()) BETWEEN 0 AND 30 THEN
-        SELECT nom INTO v_nom FROM medicaments WHERE id = NEW.medicament_id;
-        INSERT INTO alertes (type_alerte, medicament_id, lot_id, message)
-        VALUES ('expiration_proche', NEW.medicament_id, NEW.id,
-                CONCAT('Le lot ', NEW.numero_lot, ' de "', v_nom, '" expire le ', NEW.date_expiration));
-    END IF;
+    DECLARE v_deja_alerte INT;
 
-    INSERT INTO mouvements_stock (medicament_id, lot_id, type_mouvement, quantite, motif, utilisateur_id)
-    VALUES (NEW.medicament_id, NEW.id, 'entree', NEW.quantite_initiale,
-            CONCAT('Réception lot ', NEW.numero_lot), 1);
+    SELECT COALESCE(SUM(quantite),0) INTO v_total
+    FROM lots WHERE medicament_id = NEW.medicament_id AND statut = 'actif' AND date_expiration >= CURDATE();
+
+    SELECT quantite_minimale, nom INTO v_min, v_nom
+    FROM medicaments WHERE id = NEW.medicament_id;
+
+    IF v_total <= v_min THEN
+        SELECT COUNT(*) INTO v_deja_alerte
+        FROM alertes
+        WHERE medicament_id = NEW.medicament_id AND type_alerte = 'stock_faible' AND statut = 'active';
+
+        IF v_deja_alerte = 0 THEN
+            INSERT INTO alertes (type_alerte, medicament_id, message)
+            VALUES ('stock_faible', NEW.medicament_id,
+                    CONCAT('Stock faible : veuillez réapprovisionner "', v_nom, '" (reste ', v_total, ')'));
+        END IF;
+    ELSE
+        UPDATE alertes SET statut = 'traitee', date_traitement = NOW()
+        WHERE medicament_id = NEW.medicament_id AND type_alerte = 'stock_faible' AND statut = 'active';
+    END IF;
 END //
 DELIMITER ;
 
 -- =====================================================================
--- EVENT : vérification quotidienne des lots expirés / proches d'expirer
--- (nécessite : SET GLOBAL event_scheduler = ON;)
+-- TRIGGER : après MISE À JOUR d'un médicament (changement seuil min)
+-- =====================================================================
+DELIMITER //
+CREATE TRIGGER trg_medicaments_after_update
+AFTER UPDATE ON medicaments
+FOR EACH ROW
+BEGIN
+    DECLARE v_total INT;
+    DECLARE v_deja_alerte INT;
+
+    IF OLD.quantite_minimale <> NEW.quantite_minimale THEN
+        SELECT COALESCE(SUM(quantite),0) INTO v_total
+        FROM lots WHERE medicament_id = NEW.id AND statut = 'actif' AND date_expiration >= CURDATE();
+
+        IF v_total <= NEW.quantite_minimale THEN
+            SELECT COUNT(*) INTO v_deja_alerte
+            FROM alertes
+            WHERE medicament_id = NEW.id AND type_alerte = 'stock_faible' AND statut = 'active';
+
+            IF v_deja_alerte = 0 THEN
+                INSERT INTO alertes (type_alerte, medicament_id, message)
+                VALUES ('stock_faible', NEW.id,
+                        CONCAT('Stock faible (nouveau seuil) : "', NEW.nom, '" (reste ', v_total, ')'));
+            END IF;
+        ELSE
+            UPDATE alertes SET statut = 'traitee', date_traitement = NOW()
+            WHERE medicament_id = NEW.id AND type_alerte = 'stock_faible' AND statut = 'active';
+        END IF;
+    END IF;
+END //
+DELIMITER ;
+
+-- =====================================================================
+-- EVENT : vérification quotidienne (Expirations + Stock Faible)
 -- =====================================================================
 DELIMITER //
 CREATE EVENT IF NOT EXISTS ev_verifier_expirations
@@ -299,23 +363,6 @@ ON SCHEDULE EVERY 1 DAY
 STARTS CURRENT_DATE + INTERVAL 1 DAY
 DO
 BEGIN
-    -- lots proches de l'expiration : entre 0 et 30 jours
-    INSERT INTO alertes (type_alerte, medicament_id, lot_id, message)
-    SELECT 'expiration_proche', l.medicament_id, l.id,
-           CONCAT('Le lot ', l.numero_lot, ' de "', m.nom,
-                  '" expire le ', l.date_expiration)
-    FROM lots l
-    JOIN medicaments m ON m.id = l.medicament_id
-    WHERE l.statut = 'actif'
-      AND l.quantite > 0
-      AND DATEDIFF(l.date_expiration, CURDATE()) BETWEEN 0 AND 30
-      AND NOT EXISTS (
-          SELECT 1
-          FROM alertes a
-          WHERE a.lot_id = l.id
-            AND a.type_alerte = 'expiration_proche'
-      );
-    -- lots expirés
     UPDATE lots SET statut = 'expire' WHERE date_expiration < CURDATE() AND statut != 'expire';
 
     INSERT INTO alertes (type_alerte, medicament_id, lot_id, message)
@@ -325,8 +372,27 @@ BEGIN
     JOIN medicaments m ON m.id = l.medicament_id
     WHERE l.statut = 'expire'
     AND NOT EXISTS (
-        SELECT 1 FROM alertes a
-        WHERE a.lot_id = l.id AND a.type_alerte = 'expiration_depassee'
+        SELECT 1 FROM alertes a WHERE a.lot_id = l.id AND a.type_alerte = 'expiration_depassee'
+    );
+
+    INSERT INTO alertes (type_alerte, medicament_id, lot_id, message)
+    SELECT 'expiration_proche', l.medicament_id, l.id,
+           CONCAT('Le lot ', l.numero_lot, ' de "', m.nom, '" expire le ', l.date_expiration)
+    FROM lots l
+    JOIN medicaments m ON m.id = l.medicament_id
+    WHERE l.statut = 'actif'
+      AND l.quantite > 0
+      AND DATEDIFF(l.date_expiration, CURDATE()) BETWEEN 0 AND 30
+      AND NOT EXISTS (
+          SELECT 1 FROM alertes a WHERE a.lot_id = l.id AND a.type_alerte = 'expiration_proche'
+      );
+      
+    INSERT INTO alertes (type_alerte, medicament_id, message)
+    SELECT 'stock_faible', v.medicament_id, CONCAT('Stock faible (suite expiration) : "', v.nom, '" (reste ', v.quantite_totale, ')')
+    FROM v_stock_medicaments v
+    WHERE v.stock_faible = 1
+    AND NOT EXISTS (
+        SELECT 1 FROM alertes a WHERE a.medicament_id = v.medicament_id AND a.type_alerte = 'stock_faible' AND a.statut = 'active'
     );
 END //
 DELIMITER ;
