@@ -45,7 +45,7 @@ function groq_api_key(): string
 function groq_model(): string
 {
     groq_load_dotenv();
-    return (string) (getenv('GROQ_MODEL') ?: ($_ENV['GROQ_MODEL'] ?? 'llama-3.3-70b-versatile'));
+    return (string) (getenv('GROQ_MODEL') ?: ($_ENV['GROQ_MODEL'] ?? 'openai/gpt-oss-20b'));
 }
 
 function groq_endpoint(): string
@@ -285,7 +285,17 @@ function chatbot_handle_request(PDO $pdo): never
         chatbot_json_error($e->getMessage());
     } catch (Throwable $e) {
         error_log('MediStock chatbot: ' . $e->getMessage());
-        chatbot_json_error('Le chatbot est temporairement indisponible. Vérifiez la configuration Groq du serveur.', 503);
+        $message = $e->getMessage();
+        if ($e instanceof InvalidArgumentException) {
+            chatbot_json_error($message);
+        }
+        // Retourner une indication exploitable sans jamais révéler la clé API.
+        $safeMessage = str_contains($message, 'GROQ_API_KEY')
+            ? 'GROQ_API_KEY est absente. Vérifiez le fichier .env à la racine du projet.'
+            : (str_contains($message, 'service Groq') || str_contains($message, 'joindre')
+                ? $message
+                : 'Le chatbot est temporairement indisponible. Vérifiez la configuration Groq du serveur.');
+        chatbot_json_error($safeMessage, 503);
     }
 }
 

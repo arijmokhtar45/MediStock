@@ -14,7 +14,7 @@ if (isset($pdo)) {
     <title>MediStock - <?= htmlspecialchars($page_titre ?? '') ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-    <link href="assets/css/style.css" rel="stylesheet">
+    <link href="assets/css/style.css?v=20260829-chatbot" rel="stylesheet">
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark app-navbar">
