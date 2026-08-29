@@ -251,7 +251,7 @@ BEGIN
 
     -- Mouvement de stock automatique pour l'entrée
     INSERT INTO mouvements_stock (medicament_id, lot_id, type_mouvement, quantite, motif, utilisateur_id)
-    VALUES (NEW.medicament_id, NEW.id, 'entree', NEW.quantite_initiale, CONCAT('Réception lot ', NEW.numero_lot), 1);
+    VALUES (NEW.medicament_id, NEW.id, 'entree', NEW.quantite_initiale, CONCAT('Réception lot ', NEW.numero_lot), COALESCE(@medistock_user_id, 1));
 
     -- Vérification expiration proche
     IF DATEDIFF(NEW.date_expiration, CURDATE()) BETWEEN 0 AND 30 THEN

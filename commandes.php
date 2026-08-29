@@ -41,13 +41,122 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['medicaments'])) {
     }
 }
 
-// --- Marquer comme livrée ---
-if (isset($_GET['livrer'])) {
+// --- Réception d'une commande : création automatique des lots ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['recevoir_commande'])) {
     require_role(['administrateur', 'responsable_stock']);
-    $id = $_GET['livrer'];
-    $pdo->prepare("UPDATE commandes SET statut = 'livree', date_livraison_reelle = NOW() WHERE id = ?")->execute([$id]);
-    header('Location: commandes.php?msg=livree');
-    exit;
+
+    $commandeId = (int) $_POST['recevoir_commande'];
+    $receptions = $_POST['receptions'] ?? [];
+
+    try {
+        $pdo->beginTransaction();
+
+        // Verrouillage de la commande : une seule réception simultanée est possible.
+        $stmtCommande = $pdo->prepare("SELECT id, fournisseur_id, statut FROM commandes WHERE id = ? FOR UPDATE");
+        $stmtCommande->execute([$commandeId]);
+        $commande = $stmtCommande->fetch();
+
+        if (!$commande) {
+            throw new Exception('Commande introuvable.');
+        }
+        if ($commande['statut'] === 'livree') {
+            throw new Exception('Cette commande a déjà été entièrement reçue.');
+        }
+        if ($commande['statut'] === 'annulee') {
+            throw new Exception('Une commande annulée ne peut pas être reçue.');
+        }
+
+        // Le trigger d'insertion des lots utilise cette variable pour journaliser
+        // l'utilisateur qui a validé la réception, sans dupliquer le mouvement.
+        $pdo->prepare('SET @medistock_user_id = ?')->execute([current_user_id()]);
+
+        $stmtDetail = $pdo->prepare("SELECT id, medicament_id, quantite, quantite_recue, prix_unitaire
+                                     FROM details_commandes WHERE id = ? AND commande_id = ? FOR UPDATE");
+        $stmtLot = $pdo->prepare("INSERT INTO lots
+            (medicament_id, fournisseur_id, numero_lot, quantite_initiale, quantite,
+             prix_achat_unitaire, date_entree, date_expiration)
+            VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?)");
+        $stmtUpdateDetail = $pdo->prepare("UPDATE details_commandes SET quantite_recue = quantite_recue + ? WHERE id = ?");
+
+        $nbRecus = 0;
+        foreach ($receptions as $detailId => $reception) {
+            $stmtDetail->execute([(int) $detailId, $commandeId]);
+            $detail = $stmtDetail->fetch();
+            if (!$detail) {
+                throw new Exception('Une ligne de commande est invalide.');
+            }
+
+            $quantite = filter_var($reception['quantite'] ?? 0, FILTER_VALIDATE_INT);
+            if ($quantite === false || $quantite < 0) {
+                throw new Exception('La quantité reçue doit être un entier positif.');
+            }
+            $reste = (int) $detail['quantite'] - (int) $detail['quantite_recue'];
+            if ($quantite > $reste) {
+                throw new Exception("La quantité reçue dépasse le reste attendu pour la ligne #{$detailId}.");
+            }
+            if ($quantite === 0) {
+                continue;
+            }
+
+            $numeroLot = trim($reception['numero_lot'] ?? '');
+            $dateExpiration = $reception['date_expiration'] ?? '';
+            $date = DateTime::createFromFormat('Y-m-d', $dateExpiration);
+            if ($numeroLot === '' || !$date || $date->format('Y-m-d') !== $dateExpiration) {
+                throw new Exception("Le numéro de lot et la date d'expiration sont obligatoires pour la ligne #{$detailId}.");
+            }
+            if ($dateExpiration < date('Y-m-d')) {
+                throw new Exception("La date d'expiration du lot {$numeroLot} est dépassée.");
+            }
+
+            // L'INSERT déclenche les alertes existantes et le mouvement d'entrée existant.
+            $stmtLot->execute([
+                $detail['medicament_id'],
+                $commande['fournisseur_id'],
+                $numeroLot,
+                $quantite,
+                $quantite,
+                $detail['prix_unitaire'],
+                $dateExpiration,
+            ]);
+            $stmtUpdateDetail->execute([$quantite, $detailId]);
+            $nbRecus++;
+        }
+
+        if ($nbRecus === 0) {
+            throw new Exception('Indiquez au moins une quantité reçue.');
+        }
+
+        $stmtReste = $pdo->prepare("SELECT COUNT(*) FROM details_commandes WHERE commande_id = ? AND quantite_recue < quantite");
+        $stmtReste->execute([$commandeId]);
+        $statut = ((int) $stmtReste->fetchColumn() === 0) ? 'livree' : 'livree_partiellement';
+
+        $stmtStatut = $pdo->prepare("UPDATE commandes SET statut = ?, date_livraison_reelle = CASE WHEN ? = 'livree' THEN CURDATE() ELSE date_livraison_reelle END WHERE id = ?");
+        $stmtStatut->execute([$statut, $statut, $commandeId]);
+
+        $pdo->commit();
+        header('Location: commandes.php?msg=' . ($statut === 'livree' ? 'livree' : 'partielle'));
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $erreur = $e->getMessage();
+    }
+}
+
+// Compatibilité : toute réception passe maintenant par le formulaire détaillé.
+$commandeReceptionId = isset($_GET['recevoir']) ? (int) $_GET['recevoir'] : 0;
+$detailsReception = [];
+if ($commandeReceptionId > 0) {
+    $stmt = $pdo->prepare("SELECT dc.*, m.nom AS medicament_nom,
+                                  (dc.quantite - dc.quantite_recue) AS quantite_restante
+                           FROM details_commandes dc
+                           JOIN medicaments m ON m.id = dc.medicament_id
+                           JOIN commandes c ON c.id = dc.commande_id
+                           WHERE dc.commande_id = ? AND c.statut IN ('en_attente','livree_partiellement')
+                           ORDER BY dc.id");
+    $stmt->execute([$commandeReceptionId]);
+    $detailsReception = $stmt->fetchAll();
 }
 
 // --- Liste des commandes ---
@@ -116,10 +225,12 @@ require 'includes/header.php';
                         <?php endif; ?>
                     </td>
                     <td class="text-end">
-                        <?php if ($c['statut'] === 'en_attente' && in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
-                            <a href="commandes.php?livrer=<?= $c['id'] ?>" class="btn btn-sm btn-outline-success" onclick="return confirm('Confirmer la réception de cette commande ?')">
-                                <i class="bi bi-check-lg"></i> Livrée
+                        <?php if (in_array($c['statut'], ['en_attente', 'livree_partiellement']) && in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
+                            <a href="commandes.php?recevoir=<?= $c['id'] ?>" class="btn btn-sm btn-outline-success">
+                                <i class="bi bi-box-arrow-in-down"></i> Réceptionner
                             </a>
+                        <?php elseif ($c['statut'] === 'livree'): ?>
+                            <span class="text-success small"><i class="bi bi-check-circle"></i> Reçue</span>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -131,6 +242,47 @@ require 'includes/header.php';
         </table>
     </div>
 </div>
+
+<?php if ($commandeReceptionId > 0 && $detailsReception): ?>
+<div class="modal fade show" id="modalReception" tabindex="-1" style="display:block;" aria-modal="true">
+    <div class="modal-dialog modal-lg">
+        <form class="modal-content" method="POST">
+            <div class="modal-header">
+                <h5 class="modal-title">Réception de la commande #<?= $commandeReceptionId ?></h5>
+                <a href="commandes.php" class="btn-close"></a>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small">Pour chaque médicament reçu, saisissez la quantité réellement reçue, le numéro du lot et la date d'expiration. Les lignes à quantité zéro ne seront pas réceptionnées.</div>
+                <?php foreach ($detailsReception as $d): ?>
+                    <div class="card p-3 mb-3">
+                        <strong><?= htmlspecialchars($d['medicament_nom']) ?></strong>
+                        <span class="text-muted small">Attendu : <?= (int) $d['quantite'] ?> — Déjà reçu : <?= (int) $d['quantite_recue'] ?> — Reste : <?= (int) $d['quantite_restante'] ?></span>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-4">
+                                <label class="form-label small">Quantité reçue</label>
+                                <input type="number" name="receptions[<?= $d['id'] ?>][quantite]" class="form-control" min="0" max="<?= (int) $d['quantite_restante'] ?>" value="<?= (int) $d['quantite_restante'] ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Numéro du lot</label>
+                                <input type="text" name="receptions[<?= $d['id'] ?>][numero_lot]" class="form-control" maxlength="50" placeholder="Ex. LOT-2026-001">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Date d'expiration</label>
+                                <input type="date" name="receptions[<?= $d['id'] ?>][date_expiration]" class="form-control" min="<?= date('Y-m-d') ?>">
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <div class="modal-footer">
+                <a href="commandes.php" class="btn btn-secondary">Annuler</a>
+                <button type="submit" name="recevoir_commande" value="<?= $commandeReceptionId ?>" class="btn btn-success"><i class="bi bi-check-lg"></i> Valider la réception</button>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="modal-backdrop fade show"></div>
+<?php endif; ?>
 
 <!-- Modal Nouvelle Commande -->
 <div class="modal fade" id="modalCommande" tabindex="-1">

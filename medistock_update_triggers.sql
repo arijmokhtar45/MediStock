@@ -3,6 +3,9 @@ USE medistock;
 DROP TRIGGER IF EXISTS trg_apres_vente;
 DROP TRIGGER IF EXISTS trg_verifier_stock_faible;
 DROP TRIGGER IF EXISTS trg_verifier_expiration_lot;
+DROP TRIGGER IF EXISTS trg_lots_after_insert;
+DROP TRIGGER IF EXISTS trg_lots_after_update;
+DROP TRIGGER IF EXISTS trg_medicaments_after_update;
 DROP EVENT IF EXISTS ev_verifier_expirations;
 
 DELIMITER //
@@ -24,7 +27,7 @@ BEGIN
     VALUES (NEW.medicament_id, NEW.lot_id, 'sortie', -NEW.quantite, CONCAT('Vente #', NEW.vente_id), v_utilisateur);
 END //
 
-CREATE TRIGGER trg_verifier_stock_faible
+CREATE TRIGGER trg_lots_after_update
 AFTER UPDATE ON lots
 FOR EACH ROW
 BEGIN
@@ -34,7 +37,7 @@ BEGIN
     DECLARE v_deja_alerte INT;
 
     SELECT COALESCE(SUM(quantite),0) INTO v_total
-    FROM lots WHERE medicament_id = NEW.medicament_id AND statut = 'actif';
+    FROM lots WHERE medicament_id = NEW.medicament_id AND statut = 'actif' AND date_expiration >= CURDATE();
 
     SELECT quantite_minimale, nom INTO v_min, v_nom
     FROM medicaments WHERE id = NEW.medicament_id;
@@ -52,7 +55,7 @@ BEGIN
     END IF;
 END //
 
-CREATE TRIGGER trg_verifier_expiration_lot
+CREATE TRIGGER trg_lots_after_insert
 AFTER INSERT ON lots
 FOR EACH ROW
 BEGIN
@@ -66,7 +69,7 @@ BEGIN
 
     INSERT INTO mouvements_stock (medicament_id, lot_id, type_mouvement, quantite, motif, utilisateur_id)
     VALUES (NEW.medicament_id, NEW.id, 'entree', NEW.quantite_initiale,
-            CONCAT('Réception lot ', NEW.numero_lot), 1);
+            CONCAT('Réception lot ', NEW.numero_lot), COALESCE(@medistock_user_id, 1));
 END //
 
 CREATE EVENT IF NOT EXISTS ev_verifier_expirations

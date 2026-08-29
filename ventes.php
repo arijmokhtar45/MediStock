@@ -27,9 +27,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['panier'])) {
                 $med = $stmt->fetch();
                 if (!$med) continue;
 
-                $sousTotal = $med['prix_vente'] * $item['quantite'];
+                $quantiteDemandee = filter_var($item['quantite'] ?? null, FILTER_VALIDATE_INT);
+                if ($quantiteDemandee === false || $quantiteDemandee <= 0) {
+                    throw new Exception('Chaque quantité vendue doit être un entier supérieur à zéro.');
+                }
+                $sousTotal = $med['prix_vente'] * $quantiteDemandee;
                 $montantTotal += $sousTotal;
-                $lignes[] = ['medicament' => $med, 'quantite' => (int) $item['quantite']];
+                $lignes[] = ['medicament' => $med, 'quantite' => $quantiteDemandee];
             }
 
             if (!$lignes) {
@@ -54,7 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['panier'])) {
                 // Sélection FEFO : lots triés par date d'expiration croissante
                 $stmtLots = $pdo->prepare("SELECT id, quantite FROM lots
                     WHERE medicament_id = ? AND statut = 'actif' AND quantite > 0
-                    ORDER BY date_expiration ASC FOR UPDATE");
+                      AND date_expiration >= CURDATE()
+                    ORDER BY date_expiration ASC, id ASC FOR UPDATE");
                 $stmtLots->execute([$medicamentId]);
                 $lotsDisponibles = $stmtLots->fetchAll();
 
