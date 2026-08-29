@@ -112,7 +112,14 @@ Le chatbot ne reçoit jamais un accès SQL libre. Le serveur PHP construit un co
 
 ### Configuration locale XAMPP
 
-Révoquez toute clé Groq précédemment publiée puis créez une nouvelle clé. Copiez `config/groq.local.php.example` vers `config/groq.local.php` et renseignez la nouvelle clé dans la valeur `api_key`. Le fichier `config/groq.local.php` est exclu par `.gitignore` et ne doit jamais être envoyé sur GitHub. Vous pouvez aussi définir `GROQ_API_KEY` et, facultativement, `GROQ_MODEL` dans l’environnement Apache/PHP. Après la configuration, redémarrez Apache.
+Copiez `.env.example` vers `.env`, puis renseignez la clé dans ce fichier :
+
+```env
+GROQ_API_KEY=VOTRE_NOUVELLE_CLE_GROQ
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+Le fichier `.env` est exclu par `.gitignore` et ne doit jamais être envoyé sur GitHub. `config/groq.php` charge automatiquement `.env` depuis la racine du projet avant de lire `GROQ_API_KEY` et `GROQ_MODEL`. Après la configuration, redémarrez Apache.
 
 L’endpoint interne est `chatbot_api.php`. Il exige une session MediStock active et un jeton CSRF généré par la page. Le modèle par défaut est `llama-3.3-70b-versatile`; il peut être remplacé avec la variable `GROQ_MODEL`. L’intégration utilise l’endpoint officiel Groq compatible Chat Completions : `https://api.groq.com/openai/v1/chat/completions`.
 
