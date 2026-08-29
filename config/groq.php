@@ -121,6 +121,7 @@ PROMPT;
 
 function chatbot_context(PDO $pdo, string $question, string $page): string
 {
+    $questionLower = mb_strtolower($question);
     $context = [
         'Page actuellement ouverte' => $page !== '' ? $page : 'inconnue',
         'Règles applicatives' => 'Le stock est calculé depuis les lots actifs non expirés. Les ventes consomment les lots en FEFO. Une réception de commande crée les lots et un mouvement d’entrée dans une transaction. Les lots expirés ne sont pas vendables.',
@@ -134,49 +135,112 @@ function chatbot_context(PDO $pdo, string $question, string $page): string
         (SELECT COALESCE(SUM(montant_total), 0) FROM ventes WHERE DATE(date_vente) = CURDATE()) AS ventes_du_jour")->fetch(PDO::FETCH_ASSOC);
     $context['Résumé actuel'] = $summary ?: [];
 
-    $term = trim(preg_replace('/[^\p{L}\p{N} ._-]/u', ' ', $question));
-    $words = preg_split('/\s+/u', $term, -1, PREG_SPLIT_NO_EMPTY);
-    $stopWords = ['quel', 'quelle', 'quels', 'quelles', 'est', 'sont', 'pour', 'dans', 'avec', 'mon', 'ma', 'mes', 'les', 'des', 'une', 'sur', 'stock', 'medicament', 'médicament'];
-    $searchWords = array_values(array_filter($words, static fn($word) => mb_strlen($word) >= 3 && !in_array(mb_strtolower($word), $stopWords, true)));
-    if ($searchWords) {
-        $conditions = [];
-        $params = [];
-        foreach (array_slice($searchWords, 0, 5) as $word) {
-            $conditions[] = '(m.nom LIKE ? OR m.code_barre LIKE ? OR m.fabricant LIKE ?)';
-            $like = '%' . $word . '%';
-            array_push($params, $like, $like, $like);
-        }
-        $stmt = $pdo->prepare("SELECT m.id, m.nom, m.fabricant, m.forme, m.dosage, m.prix_vente,
-                                      m.quantite_minimale, m.necessite_ordonnance,
-                                      COALESCE(v.quantite_totale, 0) AS stock,
-                                      c.nom AS categorie
-                               FROM medicaments m
-                               LEFT JOIN v_stock_medicaments v ON v.medicament_id = m.id
-                               LEFT JOIN categories c ON c.id = m.categorie_id
-                               WHERE m.actif = 1 AND (" . implode(' OR ', $conditions) . ")
-                               ORDER BY m.nom LIMIT 8");
-        $stmt->execute($params);
-        $context['Médicaments correspondant à la recherche'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $context['Médicaments actifs'] = $pdo->query("SELECT m.id, m.nom, m.fabricant, m.forme, m.dosage, m.prix_vente,
+        COALESCE(v.quantite_totale, 0) AS stock,
+        c.nom AS categorie
+        FROM medicaments m
+        LEFT JOIN v_stock_medicaments v ON v.medicament_id = m.id
+        LEFT JOIN categories c ON c.id = m.categorie_id
+        WHERE m.actif = 1
+        ORDER BY m.nom LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+
+    $context['Médicaments à stock 0'] = $pdo->query("SELECT m.nom, COALESCE(v.quantite_totale, 0) AS stock
+        FROM medicaments m
+        LEFT JOIN v_stock_medicaments v ON v.medicament_id = m.id
+        WHERE m.actif = 1
+        HAVING stock = 0
+        ORDER BY m.nom")->fetchAll(PDO::FETCH_ASSOC);
+
+    if (preg_match('/(stock|medicament|médicament|rupture|vide|épuis|epuis|rupture)/i', $question)) {
+        $context['Stock réel par médicament'] = $pdo->query("SELECT m.nom, COALESCE(v.quantite_totale, 0) AS stock, m.prix_vente
+            FROM medicaments m
+            LEFT JOIN v_stock_medicaments v ON v.medicament_id = m.id
+            WHERE m.actif = 1
+            ORDER BY stock ASC, m.nom ASC
+            LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    if (preg_match('/alerte|stock faible|expiration|rupture|expire/i', $question)) {
+    if (preg_match('/(alerte|expiration|expire|stock faible|rupture|lot)/i', $question)) {
         $context['Alertes actives'] = $pdo->query("SELECT a.type_alerte, a.message, a.date_creation, m.nom AS medicament, l.numero_lot
             FROM alertes a
             LEFT JOIN medicaments m ON m.id = a.medicament_id
             LEFT JOIN lots l ON l.id = a.lot_id
-            WHERE a.statut = 'active' ORDER BY a.date_creation DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+            WHERE a.statut = 'active'
+            ORDER BY a.date_creation DESC
+            LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    if (preg_match('/commande|réception|reception|fournisseur/i', $question)) {
+    if (preg_match('/(commande|réception|reception|fournisseur)/i', $question)) {
         $context['Commandes récentes'] = $pdo->query("SELECT c.id, c.statut, c.date_commande, c.date_livraison_prevue,
             c.montant_total, f.nom AS fournisseur
-            FROM commandes c JOIN fournisseurs f ON f.id = c.fournisseur_id
-            ORDER BY c.date_commande DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+            FROM commandes c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            ORDER BY c.date_commande DESC
+            LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    if (preg_match('/vente|chiffre|paiement|ticket/i', $question)) {
-        $context['Ventes récentes'] = $pdo->query("SELECT id, date_vente, montant_total, mode_paiement, type_document
-            FROM ventes ORDER BY date_vente DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+    if (preg_match('/(vente|ticket|paiement|chiffre|ca|ca du jour|revenu|vendeur|vendeuse)/i', $question)) {
+        $context['Ventes récentes'] = $pdo->query("SELECT v.id, v.date_vente, v.montant_total, v.mode_paiement, v.type_document,
+            CONCAT(u.nom, ' ', u.prenom) AS vendeur
+            FROM ventes v
+            JOIN utilisateurs u ON u.id = v.utilisateur_id
+            ORDER BY v.date_vente DESC
+            LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+        $context['Ventes par vendeur'] = $pdo->query("SELECT CONCAT(u.nom, ' ', u.prenom) AS vendeur,
+            COUNT(v.id) AS nb_ventes,
+            COALESCE(SUM(v.montant_total), 0) AS total_ventes
+            FROM utilisateurs u
+            LEFT JOIN ventes v ON v.utilisateur_id = u.id
+            GROUP BY u.id, u.nom, u.prenom
+            ORDER BY total_ventes DESC, u.nom ASC")->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if (preg_match('/(lot|fefo|expiration|date_expiration|perime|périm)/i', $question)) {
+        $context['Lots actifs récents'] = $pdo->query("SELECT l.id, l.numero_lot, m.nom AS medicament, l.quantite, l.date_expiration
+            FROM lots l
+            JOIN medicaments m ON m.id = l.medicament_id
+            WHERE l.statut = 'actif'
+            ORDER BY l.date_expiration ASC, l.quantite DESC
+            LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if (preg_match('/(categorie|catégorie|famille)/i', $question)) {
+        $context['Catégories'] = $pdo->query("SELECT c.id, c.nom, COUNT(m.id) AS nb_medicaments
+            FROM categories c
+            LEFT JOIN medicaments m ON m.categorie_id = c.id AND m.actif = 1
+            GROUP BY c.id, c.nom
+            ORDER BY c.nom")->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if (preg_match('/(vendeur|vendeuse|au nom du vendeur|par le vendeur|vente.*vendeur|vendeur.*vente)/i', $question)) {
+        $context['Utilisateurs'] = $pdo->query("SELECT id, nom, prenom, role, email FROM utilisateurs ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    $term = trim(preg_replace('/[^\p{L}\p{N} ._-]/u', ' ', $question));
+    $words = preg_split('/\s+/u', $term, -1, PREG_SPLIT_NO_EMPTY);
+    $stopWords = ['quel', 'quelle', 'quels', 'quelles', 'est', 'sont', 'pour', 'dans', 'avec', 'mon', 'ma', 'mes', 'les', 'des', 'une', 'sur', 'stock', 'medicament', 'médicament', 'combien', 'comment', 'peux', 'tu', 'je', 'on', 'a', 'de', 'le', 'la', 'un', 'une', 'dans', 'et', 'ou'];
+    $searchWords = array_values(array_filter($words, static fn($word) => mb_strlen($word) >= 3 && !in_array(mb_strtolower($word), $stopWords, true)));
+
+    if ($searchWords) {
+        $conditions = [];
+        $params = [];
+        foreach (array_slice($searchWords, 0, 5) as $word) {
+            $conditions[] = '(m.nom LIKE ? OR m.code_barre LIKE ? OR m.fabricant LIKE ? OR c.nom LIKE ?)';
+            $like = '%' . $word . '%';
+            array_push($params, $like, $like, $like, $like);
+        }
+
+        $stmt = $pdo->prepare("SELECT m.id, m.nom, m.fabricant, m.forme, m.dosage, m.prix_vente,
+            COALESCE(v.quantite_totale, 0) AS stock,
+            c.nom AS categorie
+            FROM medicaments m
+            LEFT JOIN v_stock_medicaments v ON v.medicament_id = m.id
+            LEFT JOIN categories c ON c.id = m.categorie_id
+            WHERE m.actif = 1 AND (" . implode(' OR ', $conditions) . ")
+            ORDER BY m.nom
+            LIMIT 8");
+        $stmt->execute($params);
+        $context['Résultat de recherche'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     return json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);

@@ -1,4 +1,7 @@
 </main>
+<?php
+require_once __DIR__ . '/../assistant_ai/widget.php';
+?>
 <footer class="text-center text-muted small py-4">
     MediStock &copy; <?= date('Y') ?> — Projet de Fin d'Études
 </footer>
