@@ -1,0 +1,4 @@
+config/groq.local.php
+.env
+.env.*
+!.env.example

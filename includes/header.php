@@ -1,5 +1,6 @@
 <?php
 // Doit être inclus APRES require_login() et après avoir défini $page_titre
+require_once __DIR__ . '/../config/groq.php';
 $nombre_alertes = 0;
 if (isset($pdo)) {
     $nombre_alertes = (int) $pdo->query("SELECT COUNT(*) AS n FROM alertes WHERE statut = 'active'")->fetch()['n'];

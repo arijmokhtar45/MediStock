@@ -1,0 +1,6 @@
+<?php
+// Copier ce fichier sous config/groq.local.php puis remplacer la valeur.
+// Ne jamais envoyer groq.local.php sur GitHub.
+return [
+    'api_key' => 'VOTRE_NOUVELLE_CLE_GROQ',
+];

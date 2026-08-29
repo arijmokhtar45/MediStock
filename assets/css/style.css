@@ -59,3 +59,53 @@ body {
 .badge-expire-proche { background-color: #f6c23e; color: #222; }
 .badge-expire        { background-color: #e74a3b; }
 .badge-ok             { background-color: #1cc88a; }
+
+/* MediStock Assistant */
+.chatbot-launcher {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 1050;
+    width: 52px;
+    height: 52px;
+    border: 0;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(135deg, var(--ms-dark), var(--ms-primary));
+    box-shadow: 0 5px 18px rgba(10, 61, 98, .3);
+    font-size: 22px;
+}
+
+.chatbot-panel {
+    display: none;
+    position: fixed;
+    right: 24px;
+    bottom: 88px;
+    z-index: 1050;
+    width: min(390px, calc(100vw - 32px));
+    overflow: hidden;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 12px 38px rgba(0, 0, 0, .2);
+}
+
+.chatbot-panel.open { display: block; }
+.chatbot-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; color: #fff; background: linear-gradient(90deg, var(--ms-dark), var(--ms-primary)); }
+.chatbot-messages { height: 330px; overflow-y: auto; padding: 14px; background: #f4f6f9; }
+.chatbot-message { max-width: 90%; margin-bottom: 10px; padding: 9px 11px; border-radius: 10px; white-space: normal; overflow-wrap: anywhere; font-size: .9rem; }
+.chatbot-assistant { margin-right: auto; background: #fff; border: 1px solid #e1e6ee; }
+.chatbot-user { margin-left: auto; color: #fff; background: var(--ms-primary); }
+.chatbot-error { color: #842029; background: #f8d7da; }
+.chatbot-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #e1e6ee; }
+.chatbot-form textarea { flex: 1; resize: none; border: 1px solid #ced4da; border-radius: 8px; padding: 8px; }
+.chatbot-form button { align-self: stretch; }
+.chatbot-disclaimer { padding: 0 12px 10px; color: #6c757d; font-size: .72rem; text-align: center; }
+
+@media (max-width: 576px) {
+    .chatbot-launcher { right: 16px; bottom: 16px; }
+    .chatbot-panel { right: 16px; bottom: 80px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chatbot-panel, .chatbot-launcher { transition: none; }
+}

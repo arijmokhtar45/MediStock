@@ -103,3 +103,17 @@ vraie logique de data analysis appliquée à un cas métier réel.
 - Requêtes préparées PDO (protection contre les injections SQL)
 - Contrôle d'accès par rôle sur chaque action sensible (`require_role()`)
 - `htmlspecialchars()` systématique à l'affichage (protection XSS)
+
+## Chatbot MediStock Assistant (Groq)
+
+MediStock intègre désormais un assistant conversationnel accessible depuis toutes les pages authentifiées. Il est spécialisé dans le fonctionnement de MediStock : médicaments, catégories, fournisseurs, lots, commandes et réceptions, stock, mouvements, ventes, tickets, alertes et prévisions locales. Il refuse les questions hors projet ainsi que les demandes de diagnostic, prescription, posologie ou conseil médical destiné à un patient.
+
+Le chatbot ne reçoit jamais un accès SQL libre. Le serveur PHP construit un contexte en lecture seule avec des requêtes prédéfinies et limitées : résumé du système, médicaments correspondant à la recherche, alertes actives, commandes récentes et ventes récentes selon la question. La clé API reste côté serveur et les réponses sont échappées avant affichage.
+
+### Configuration locale XAMPP
+
+Révoquez toute clé Groq précédemment publiée puis créez une nouvelle clé. Copiez `config/groq.local.php.example` vers `config/groq.local.php` et renseignez la nouvelle clé dans la valeur `api_key`. Le fichier `config/groq.local.php` est exclu par `.gitignore` et ne doit jamais être envoyé sur GitHub. Vous pouvez aussi définir `GROQ_API_KEY` et, facultativement, `GROQ_MODEL` dans l’environnement Apache/PHP. Après la configuration, redémarrez Apache.
+
+L’endpoint interne est `chatbot_api.php`. Il exige une session MediStock active et un jeton CSRF généré par la page. Le modèle par défaut est `llama-3.3-70b-versatile`; il peut être remplacé avec la variable `GROQ_MODEL`. L’intégration utilise l’endpoint officiel Groq compatible Chat Completions : `https://api.groq.com/openai/v1/chat/completions`.
+
+L’assistant est un outil de gestion interne et ne remplace pas un pharmacien, un médecin ou une validation humaine. Il ne modifie aucune donnée et ne peut pas exécuter d’opération de vente, de réception ou de traitement d’alerte.
