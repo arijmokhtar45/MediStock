@@ -67,9 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
 
             <hr>
-            <p class="small text-muted mb-0 text-center">
-                Pas encore configuré ? Lancez <code>setup.php</code> pour créer les comptes de test.
-            </p>
         </div>
     </div>
 </body>
