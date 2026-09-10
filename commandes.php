@@ -1,7 +1,7 @@
 <?php
 require 'config/db.php';
 require 'includes/auth.php';
-require_login();
+require_role(['administrateur']);
 
 $page_titre = 'Commandes';
 $erreur = '';
@@ -9,8 +9,6 @@ $succes = '';
 
 // --- Validation d'une nouvelle commande ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['medicaments'])) {
-    require_role(['administrateur', 'responsable_stock']);
-    
     $fournisseur_id = $_POST['fournisseur_id'];
     $date_prevue = $_POST['date_livraison_prevue'];
     $meds = $_POST['medicaments']; // Array of [id, quantite, prix]
@@ -43,8 +41,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['medicaments'])) {
 
 // --- Réception d'une commande : création automatique des lots ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['recevoir_commande'])) {
-    require_role(['administrateur', 'responsable_stock']);
-
     $commandeId = (int) $_POST['recevoir_commande'];
     $receptions = $_POST['receptions'] ?? [];
 
@@ -176,11 +172,9 @@ require 'includes/header.php';
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4>Commandes Fournisseurs</h4>
-    <?php if (in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCommande">
-            <i class="bi bi-plus-lg"></i> Nouvelle commande
-        </button>
-    <?php endif; ?>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCommande">
+        <i class="bi bi-plus-lg"></i> Nouvelle commande
+    </button>
 </div>
 
 <?php if ($succes): ?>
@@ -225,7 +219,7 @@ require 'includes/header.php';
                         <?php endif; ?>
                     </td>
                     <td class="text-end">
-                        <?php if (in_array($c['statut'], ['en_attente', 'livree_partiellement']) && in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
+                        <?php if (in_array($c['statut'], ['en_attente', 'livree_partiellement'], true)): ?>
                             <a href="commandes.php?recevoir=<?= $c['id'] ?>" class="btn btn-sm btn-outline-success">
                                 <i class="bi bi-box-arrow-in-down"></i> Réceptionner
                             </a>

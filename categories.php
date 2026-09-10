@@ -1,13 +1,12 @@
 <?php
 require 'config/db.php';
 require 'includes/auth.php';
-require_login();
+require_role(['administrateur']);
 
 $page_titre = 'Catégories';
 
 // --- Ajout / Modification ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_role(['administrateur', 'responsable_stock']);
 
     $id = $_POST['id'] ?? null;
     $nom = trim($_POST['nom']);
@@ -26,7 +25,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // --- Suppression ---
 if (isset($_GET['delete'])) {
-    require_role(['administrateur']);
     $pdo->prepare("DELETE FROM categories WHERE id = ?")->execute([$_GET['delete']]);
     header('Location: categories.php?msg=supprime');
     exit;
@@ -39,11 +37,9 @@ require 'includes/header.php';
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4>Gestion des catégories</h4>
-    <?php if (in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCategorie" onclick="nouvelleCategorie()">
-            <i class="bi bi-plus-lg"></i> Nouvelle catégorie
-        </button>
-    <?php endif; ?>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCategorie" onclick="nouvelleCategorie()">
+        <i class="bi bi-plus-lg"></i> Nouvelle catégorie
+    </button>
 </div>
 
 <?php if (isset($_GET['msg'])): ?>
@@ -66,18 +62,14 @@ require 'includes/header.php';
                     <td><strong><?= htmlspecialchars($c['nom']) ?></strong></td>
                     <td><?= htmlspecialchars($c['description']) ?></td>
                     <td class="text-end">
-                        <?php if (in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
                         <button class="btn btn-sm btn-outline-secondary" 
                                 onclick='editerCategorie(<?= json_encode($c, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
                             <i class="bi bi-pencil"></i>
                         </button>
-                        <?php endif; ?>
-                        <?php if (current_role() === 'administrateur'): ?>
                         <a href="categories.php?delete=<?= $c['id'] ?>" class="btn btn-sm btn-outline-danger" 
                            onclick="return confirm('Supprimer cette catégorie ?')">
                             <i class="bi bi-trash"></i>
                         </a>
-                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>

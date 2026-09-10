@@ -1,7 +1,7 @@
 <?php
 require 'config/db.php';
 require 'includes/auth.php';
-require_login();
+require_role(['administrateur']);
 
 $page_titre = 'Lots';
 

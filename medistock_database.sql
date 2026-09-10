@@ -18,7 +18,7 @@ CREATE TABLE utilisateurs (
     prenom            VARCHAR(50)  NOT NULL,
     email             VARCHAR(100) NOT NULL UNIQUE,
     mot_de_passe      VARCHAR(255) NOT NULL,          -- password_hash() côté PHP
-    role              ENUM('administrateur','pharmacien','responsable_stock') NOT NULL,
+    role              ENUM('administrateur','pharmacien') NOT NULL,
     telephone         VARCHAR(20),
     actif             TINYINT(1) NOT NULL DEFAULT 1,
     date_creation     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -402,8 +402,7 @@ DELIMITER ;
 -- =====================================================================
 INSERT INTO utilisateurs (nom, prenom, email, mot_de_passe, role) VALUES
 ('Ben Salah', 'Amine', 'admin@medistock.tn', '$2y$10$exempleHashRemplacerParPasswordHash', 'administrateur'),
-('Trabelsi', 'Sarra', 'pharmacien@medistock.tn', '$2y$10$exempleHashRemplacerParPasswordHash', 'pharmacien'),
-('Gharbi', 'Youssef', 'stock@medistock.tn', '$2y$10$exempleHashRemplacerParPasswordHash', 'responsable_stock');
+('Trabelsi', 'Sarra', 'pharmacien@medistock.tn', '$2y$10$exempleHashRemplacerParPasswordHash', 'pharmacien');
 
 INSERT INTO categories (nom, description) VALUES
 ('Antalgique', 'Médicaments contre la douleur'),

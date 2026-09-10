@@ -1,7 +1,7 @@
 <?php
 require 'config/db.php';
 require 'includes/auth.php';
-require_login();
+require_role(['administrateur']);
 require 'includes/ia_engine.php';
 
 $page_titre = 'Prévisions IA';

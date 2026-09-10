@@ -15,7 +15,7 @@ function require_login() {
 function require_role($roles) {
     require_login();
     $roles = (array) $roles;
-    if (!in_array($_SESSION['role'], $roles)) {
+    if (!in_array($_SESSION['role'], $roles, true)) {
         http_response_code(403);
         die('<div style="font-family:sans-serif;padding:40px;text-align:center;">
                 <h2>Accès refusé</h2>
@@ -31,4 +31,21 @@ function current_user_id() {
 
 function current_role() {
     return $_SESSION['role'] ?? null;
+}
+
+function is_admin() {
+    return current_role() === 'administrateur';
+}
+
+function is_pharmacien() {
+    return current_role() === 'pharmacien';
+}
+
+function role_label($role = null) {
+    $role = $role ?? current_role();
+    $labels = [
+        'administrateur' => 'Administrateur',
+        'pharmacien'     => 'Pharmacien',
+    ];
+    return $labels[$role] ?? (string) $role;
 }

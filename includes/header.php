@@ -5,6 +5,8 @@ $nombre_alertes = 0;
 if (isset($pdo)) {
     $nombre_alertes = (int) $pdo->query("SELECT COUNT(*) AS n FROM alertes WHERE statut = 'active'")->fetch()['n'];
 }
+$role = current_role();
+$estAdmin = is_admin();
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -25,16 +27,21 @@ if (isset($pdo)) {
         </button>
         <div class="collapse navbar-collapse" id="navMenu">
             <ul class="navbar-nav me-auto">
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Dashboard' ? 'active' : '' ?>" href="index.php"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Médicaments' ? 'active' : '' ?>" href="medicaments.php"><i class="bi bi-capsule"></i> Médicaments</a></li>
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Catégories' ? 'active' : '' ?>" href="categories.php"><i class="bi bi-tags"></i> Catégories</a></li>
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Lots' ? 'active' : '' ?>" href="lots.php"><i class="bi bi-boxes"></i> Lots</a></li>
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Ventes' ? 'active' : '' ?>" href="ventes.php"><i class="bi bi-cart-check"></i> Ventes</a></li>
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Fournisseurs' ? 'active' : '' ?>" href="fournisseurs.php"><i class="bi bi-people"></i> Fournisseurs</a></li>
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Commandes' ? 'active' : '' ?>" href="commandes.php"><i class="bi bi-truck"></i> Commandes</a></li>
-                <li class="nav-item"><a class="nav-link <?= $page_titre === 'Prévisions IA' ? 'active' : '' ?>" href="previsions.php"><i class="bi bi-graph-up-arrow"></i> Prévisions IA</a></li>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Dashboard' ? 'active' : '' ?>" href="index.php"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Médicaments' ? 'active' : '' ?>" href="medicaments.php"><i class="bi bi-capsule"></i> Médicaments</a></li>
+                <?php if ($estAdmin): ?>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Catégories' ? 'active' : '' ?>" href="categories.php"><i class="bi bi-tags"></i> Catégories</a></li>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Lots' ? 'active' : '' ?>" href="lots.php"><i class="bi bi-boxes"></i> Lots</a></li>
+                <?php endif; ?>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Ventes' ? 'active' : '' ?>" href="ventes.php"><i class="bi bi-cart-check"></i> Ventes</a></li>
+                <?php if ($estAdmin): ?>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Fournisseurs' ? 'active' : '' ?>" href="fournisseurs.php"><i class="bi bi-truck"></i> Fournisseurs</a></li>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Commandes' ? 'active' : '' ?>" href="commandes.php"><i class="bi bi-box-seam"></i> Commandes</a></li>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Prévisions IA' ? 'active' : '' ?>" href="previsions.php"><i class="bi bi-graph-up-arrow"></i> Prévisions IA</a></li>
+                <li class="nav-item"><a class="nav-link <?= ($page_titre ?? '') === 'Utilisateurs' ? 'active' : '' ?>" href="utilisateurs.php"><i class="bi bi-people"></i> Utilisateurs</a></li>
+                <?php endif; ?>
                 <li class="nav-item">
-                    <a class="nav-link position-relative" href="alertes.php">
+                    <a class="nav-link position-relative <?= ($page_titre ?? '') === 'Alertes' ? 'active' : '' ?>" href="alertes.php">
                         <i class="bi bi-bell"></i> Alertes
                         <?php if ($nombre_alertes > 0): ?>
                             <span class="badge rounded-pill bg-danger"><?= $nombre_alertes ?></span>
@@ -48,7 +55,7 @@ if (isset($pdo)) {
                         <i class="bi bi-person-circle"></i> <?= htmlspecialchars($_SESSION['nom'] ?? '') ?>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><span class="dropdown-item-text small text-muted"><?= htmlspecialchars(current_role()) ?></span></li>
+                        <li><span class="dropdown-item-text small text-muted"><?= htmlspecialchars(role_label()) ?></span></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right"></i> Déconnexion</a></li>
                     </ul>

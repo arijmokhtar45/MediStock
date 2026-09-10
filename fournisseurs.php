@@ -1,12 +1,11 @@
 <?php
 require 'config/db.php';
 require 'includes/auth.php';
-require_login();
+require_role(['administrateur']);
 
 $page_titre = 'Fournisseurs';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_role(['administrateur', 'responsable_stock']);
     $id = $_POST['id'] ?? null;
     $data = [$_POST['nom'], $_POST['contact_personne'], $_POST['telephone'], $_POST['email'], $_POST['adresse']];
 
@@ -22,7 +21,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if (isset($_GET['delete'])) {
-    require_role(['administrateur']);
     $pdo->prepare("DELETE FROM fournisseurs WHERE id = ?")->execute([$_GET['delete']]);
     header('Location: fournisseurs.php');
     exit;
@@ -34,11 +32,9 @@ require 'includes/header.php';
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4>Fournisseurs</h4>
-    <?php if (in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFournisseur" onclick="nouveauFournisseur()">
         <i class="bi bi-plus-lg"></i> Nouveau fournisseur
     </button>
-    <?php endif; ?>
 </div>
 
 <div class="card p-3">
@@ -52,16 +48,12 @@ require 'includes/header.php';
                 <td><?= htmlspecialchars($f['telephone'] ?? '-') ?></td>
                 <td><?= htmlspecialchars($f['email'] ?? '-') ?></td>
                 <td class="text-end">
-                    <?php if (in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
                     <button class="btn btn-sm btn-outline-secondary" onclick='editerFournisseur(<?= json_encode($f, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <?php endif; ?>
-                    <?php if (current_role() === 'administrateur'): ?>
                     <a href="?delete=<?= $f['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Supprimer ?')">
                         <i class="bi bi-trash"></i>
                     </a>
-                    <?php endif; ?>
                 </td>
             </tr>
         <?php endforeach; ?>

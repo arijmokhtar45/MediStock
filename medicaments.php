@@ -8,7 +8,7 @@ $message = '';
 
 // --- Suppression ---
 if (isset($_GET['delete'])) {
-    require_role(['administrateur', 'responsable_stock']);
+    require_role(['administrateur']);
     $pdo->prepare("UPDATE medicaments SET actif = 0 WHERE id = ?")->execute([$_GET['delete']]);
     header('Location: medicaments.php?msg=supprime');
     exit;
@@ -16,7 +16,7 @@ if (isset($_GET['delete'])) {
 
 // --- Ajout / Modification ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_role(['administrateur', 'responsable_stock']);
+    require_role(['administrateur']);
 
     $id = $_POST['id'] ?? null;
     $data = [
@@ -70,8 +70,8 @@ require 'includes/header.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4>Gestion des médicaments</h4>
-    <?php if (in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
+    <h4><?= is_admin() ? 'Gestion des médicaments' : 'Consultation des médicaments' ?></h4>
+    <?php if (is_admin()): ?>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalMedicament" onclick="nouveauMedicament()">
             <i class="bi bi-plus-lg"></i> Nouveau médicament
         </button>
@@ -124,7 +124,7 @@ require 'includes/header.php';
                         <?php endif; ?>
                     </td>
                     <td class="text-end">
-                        <?php if (in_array(current_role(), ['administrateur', 'responsable_stock'])): ?>
+                        <?php if (is_admin()): ?>
                         <button class="btn btn-sm btn-outline-secondary"
                                 onclick='editerMedicament(<?= json_encode($m, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
                             <i class="bi bi-pencil"></i>
