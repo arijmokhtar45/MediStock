@@ -85,20 +85,49 @@ if (isset($_GET['toggle'])) {
     }
 }
 
-// --- Suppression logique (désactivation) ---
+// --- Suppression définitive ---
 if (isset($_GET['delete'])) {
     $id = (int) $_GET['delete'];
     if ($id === (int) current_user_id()) {
         $erreur = 'Vous ne pouvez pas supprimer votre propre compte.';
     } else {
-        $pdo->prepare('UPDATE utilisateurs SET actif = 0 WHERE id = ?')->execute([$id]);
-        header('Location: utilisateurs.php?msg=supprime');
-        exit;
+        try {
+            // Vérifier si l'utilisateur a un historique (ventes, commandes, mouvements)
+            $stmtLien = $pdo->prepare(
+                'SELECT
+                    (SELECT COUNT(*) FROM ventes WHERE utilisateur_id = ?) +
+                    (SELECT COUNT(*) FROM commandes WHERE utilisateur_id = ?) +
+                    (SELECT COUNT(*) FROM mouvements_stock WHERE utilisateur_id = ?) AS nb'
+            );
+            $stmtLien->execute([$id, $id, $id]);
+            $nbLiens = (int) $stmtLien->fetchColumn();
+
+            if ($nbLiens > 0) {
+                // Impossible de supprimer à cause des clés étrangères : on désactive
+                $pdo->prepare('UPDATE utilisateurs SET actif = 0 WHERE id = ?')->execute([$id]);
+                header('Location: utilisateurs.php?msg=desactive_historique');
+                exit;
+            }
+
+            $pdo->prepare('DELETE FROM utilisateurs WHERE id = ?')->execute([$id]);
+            header('Location: utilisateurs.php?msg=supprime');
+            exit;
+        } catch (Throwable $e) {
+            $erreur = 'Suppression impossible : ' . $e->getMessage();
+        }
     }
 }
 
-$utilisateurs = $pdo->query('SELECT id, nom, prenom, email, role, telephone, actif, date_creation, derniere_connexion
-                             FROM utilisateurs ORDER BY role, nom, prenom')->fetchAll();
+$filtre = $_GET['filtre'] ?? 'actifs';
+$sqlUsers = 'SELECT id, nom, prenom, email, role, telephone, actif, date_creation, derniere_connexion
+             FROM utilisateurs';
+if ($filtre === 'actifs') {
+    $sqlUsers .= ' WHERE actif = 1';
+} elseif ($filtre === 'inactifs') {
+    $sqlUsers .= ' WHERE actif = 0';
+}
+$sqlUsers .= ' ORDER BY role, nom, prenom';
+$utilisateurs = $pdo->query($sqlUsers)->fetchAll();
 
 require 'includes/header.php';
 ?>
@@ -111,7 +140,16 @@ require 'includes/header.php';
 </div>
 
 <?php if (isset($_GET['msg'])): ?>
-    <div class="alert alert-success py-2">Opération effectuée avec succès.</div>
+    <?php if ($_GET['msg'] === 'supprime'): ?>
+        <div class="alert alert-success py-2">Utilisateur supprimé définitivement.</div>
+    <?php elseif ($_GET['msg'] === 'desactive_historique'): ?>
+        <div class="alert alert-warning py-2">
+            Ce compte a un historique (ventes, commandes ou mouvements) et ne peut pas être effacé.
+            Il a été <strong>désactivé</strong> : il n’apparaît plus dans la liste des actifs et ne peut plus se connecter.
+        </div>
+    <?php else: ?>
+        <div class="alert alert-success py-2">Opération effectuée avec succès.</div>
+    <?php endif; ?>
 <?php endif; ?>
 <?php if ($erreur): ?>
     <div class="alert alert-danger py-2"><?= htmlspecialchars($erreur) ?></div>
@@ -119,8 +157,14 @@ require 'includes/header.php';
 
 <div class="alert alert-info py-2">
     Créez des comptes <strong>Pharmacien</strong> pour qu’ils puissent se connecter via la page de connexion.
-    L’administrateur conserve l’accès complet (stock, fournisseurs, commandes, utilisateurs).
+    La suppression retire le compte de la base s’il n’a aucun historique ; sinon il est désactivé.
 </div>
+
+<ul class="nav nav-pills mb-3">
+    <li class="nav-item"><a class="nav-link <?= $filtre === 'actifs' ? 'active' : '' ?>" href="?filtre=actifs">Actifs</a></li>
+    <li class="nav-item"><a class="nav-link <?= $filtre === 'inactifs' ? 'active' : '' ?>" href="?filtre=inactifs">Inactifs</a></li>
+    <li class="nav-item"><a class="nav-link <?= $filtre === 'tous' ? 'active' : '' ?>" href="?filtre=tous">Tous</a></li>
+</ul>
 
 <div class="card p-3">
     <div class="table-responsive">
@@ -162,13 +206,14 @@ require 'includes/header.php';
                             <i class="bi bi-pencil"></i>
                         </button>
                         <?php if ((int) $u['id'] !== (int) current_user_id()): ?>
-                        <a href="utilisateurs.php?toggle=<?= (int) $u['id'] ?>" class="btn btn-sm btn-outline-warning"
+                        <a href="utilisateurs.php?toggle=<?= (int) $u['id'] ?>&filtre=<?= urlencode($filtre) ?>" class="btn btn-sm btn-outline-warning"
                            title="Activer / désactiver"
                            onclick="return confirm('Changer le statut de cet utilisateur ?')">
                             <i class="bi bi-toggle-on"></i>
                         </a>
                         <a href="utilisateurs.php?delete=<?= (int) $u['id'] ?>" class="btn btn-sm btn-outline-danger"
-                           onclick="return confirm('Désactiver ce compte ?')">
+                           title="Supprimer"
+                           onclick="return confirm('Supprimer définitivement ce compte ?')">
                             <i class="bi bi-trash"></i>
                         </a>
                         <?php endif; ?>
